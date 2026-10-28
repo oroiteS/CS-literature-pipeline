@@ -1,0 +1,53 @@
+# =============================================================================
+# 放行会议名单 — Venue Whitelist
+# =============================================================================
+# 本文件是「哪些会议放行」的唯一真源，由用户提供，bot 不自行编造。
+#
+# 【访谈问法】
+#   「把放行的会议名单给我：A 会，以及你额外放行的 B 会。
+#     每个会议可以带别名（简称/旧称/全称），便于匹配。」
+#
+# 【格式】
+#   venues:
+#     - name: 主名（用于日报展示，也是匹配主键）
+#       aliases: [别名1, 别名2]      # 可选；arXiv 的 Comments 字段常用简称
+#       score: 1.0                   # 可选；不写则用 default_score
+#       note: 备注                    # 可选
+#
+# 【分数语义】
+#   分数只影响排序，不影响放行与否。
+#   放行与否只看「在不在本名单里」。
+#   final = venue_score × relevance/10
+#   放行会议统一 1.0（可单会调整）；纯 preprint 用 preprint_score（0.5）。
+#
+# 【匹配规则】
+#   论文录用声明与本表 name / aliases 做大小写不敏感、去标点的包含匹配。
+#   例：aliases 含 NIPS 时，"Accepted to NIPS 2026" 与 "NeurIPS" 都命中。
+#   未命中 → 淘汰。无法核验 → 按未命中处理并在报告中注明。
+# =============================================================================
+
+version: ""
+
+# 放行会议的默认分数
+default_score: 1.0
+
+# 纯 preprint（无任何录用声明）的分数
+preprint_score: 0.5
+
+# 会议年份窗（与 profile.yaml 的 conference_years 同步；此处为兜底）
+years: []
+
+venues: []
+# 填写示例（请替换为真实名单）：
+#
+# venues:
+#   - name: NeurIPS
+#     aliases: [NIPS, "Neural Information Processing Systems"]
+#     score: 1.0
+#   - name: ICML
+#     aliases: [ICML, "International Conference on Machine Learning"]
+#     score: 1.0
+#   - name: EMNLP
+#     aliases: [EMNLP]
+#     score: 1.0
+#     note: "B 会，用户额外放行；分数与 A 会一致"
