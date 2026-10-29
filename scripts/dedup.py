@@ -30,10 +30,28 @@ import unicodedata
 from datetime import date, datetime
 from pathlib import Path
 
+try:
+    from .config import ConfigError, load_yaml
+    from .doctor import resolve_data_dir
+    from .venue_review import venue_fingerprint, venue_recheck_required
+except ImportError:  # 直接执行 scripts/dedup.py
+    from config import ConfigError, load_yaml
+    from doctor import resolve_data_dir
+    from venue_review import venue_fingerprint, venue_recheck_required
+
 SKILL_ROOT = Path(__file__).resolve().parent.parent
 DATA = SKILL_ROOT / "data"
 PUSHED = DATA / "pushed.csv"
 SEEN = DATA / "seen.csv"
+PROFILE = SKILL_ROOT / "references" / "profile.yaml"
+_DEFAULT_PUSHED, _DEFAULT_SEEN = PUSHED, SEEN
+
+
+def ledger_paths() -> tuple[Path, Path]:
+    """每次操作读取画像，保留测试对单个台账常量的显式覆盖。"""
+    data = resolve_data_dir(load_yaml(PROFILE), SKILL_ROOT)
+    return (PUSHED if PUSHED != _DEFAULT_PUSHED else data / 'pushed.csv',
+            SEEN if SEEN != _DEFAULT_SEEN else data / 'seen.csv')
 
 PUSHED_COLS = [
     "arxiv_id", "doi", "title_norm", "title",
@@ -41,7 +59,7 @@ PUSHED_COLS = [
 ]
 SEEN_COLS = [
     "arxiv_id", "doi", "title_norm", "title",
-    "reason", "first_seen", "last_checked",
+    "reason", "first_seen", "last_checked", "venue_fingerprint",
 ]
 REVIEW_DAYS = 30
 
@@ -63,7 +81,7 @@ def ensure(path: Path, cols: list[str]) -> None:
 def read_rows(path: Path) -> list[dict]:
     if not path.exists():
         return []
-    with path.open(encoding="utf-8", newline="") as f:
+    with path.open(encoding="utf-8-sig", newline="") as f:
         return list(csv.DictReader(f))
 
 
@@ -100,13 +118,14 @@ def find(rows: list[dict], keys: list[str]) -> int:
 
 
 def cmd_check(args) -> int:
+    pushed_path, seen_path = ledger_paths()
     keys = keys_of(args.arxiv_id, args.doi, args.title)
-    pushed = read_rows(PUSHED)
+    pushed = read_rows(pushed_path)
     if find(pushed, keys) >= 0:
         print(json.dumps({"status": "pushed", "action": "skip"}, ensure_ascii=False))
         return 1
 
-    seen = read_rows(SEEN)
+    seen = read_rows(seen_path)
     i = find(seen, keys)
     if i < 0:
         print(json.dumps({"status": "new", "action": "evaluate"}, ensure_ascii=False))
@@ -121,6 +140,13 @@ def cmd_check(args) -> int:
             days = REVIEW_DAYS
     else:
         days = REVIEW_DAYS
+
+    if venue_recheck_required(row):
+        print(json.dumps(
+            {"status": "seen_venue_changed", "action": "re-evaluate", "reason": row.get("reason", ""), "days_since": days},
+            ensure_ascii=False,
+        ))
+        return 3
 
     if days < REVIEW_DAYS:
         print(json.dumps(
@@ -137,9 +163,10 @@ def cmd_check(args) -> int:
 
 
 def cmd_push(args) -> int:
-    ensure(PUSHED, PUSHED_COLS)
+    pushed_path, seen_path = ledger_paths()
+    ensure(pushed_path, PUSHED_COLS)
     keys = keys_of(args.arxiv_id, args.doi, args.title)
-    rows = read_rows(PUSHED)
+    rows = read_rows(pushed_path)
 
     if find(rows, keys) >= 0:
         print(json.dumps({"status": "already_pushed", "action": "skip"}, ensure_ascii=False))
@@ -155,29 +182,32 @@ def cmd_push(args) -> int:
         "pushed_at": date.today().isoformat(),
         "score": args.score or "",
     })
-    write_rows(PUSHED, PUSHED_COLS, rows)
+    write_rows(pushed_path, PUSHED_COLS, rows)
 
     # 若曾进过 seen.csv，交付后移除
-    if SEEN.exists():
-        seen = read_rows(SEEN)
+    if seen_path.exists():
+        seen = read_rows(seen_path)
         j = find(seen, keys)
         if j >= 0:
             seen.pop(j)
-            write_rows(SEEN, SEEN_COLS, seen)
+            write_rows(seen_path, SEEN_COLS, seen)
 
     print(json.dumps({"status": "pushed", "total": len(rows)}, ensure_ascii=False))
     return 0
 
 
 def cmd_reject(args) -> int:
-    ensure(SEEN, SEEN_COLS)
+    _, seen_path = ledger_paths()
+    ensure(seen_path, SEEN_COLS)
     keys = keys_of(args.arxiv_id, args.doi, args.title)
-    rows = read_rows(SEEN)
+    rows = read_rows(seen_path)
     today = date.today().isoformat()
 
+    fingerprint = venue_fingerprint() if args.reason == "venue_not_allowed" else ""
     i = find(rows, keys)
     if i >= 0:
         # 覆盖：保留 first_seen，更新 reason / last_checked
+        rows[i]["venue_fingerprint"] = fingerprint
         rows[i]["reason"] = args.reason
         rows[i]["last_checked"] = today
         if args.arxiv_id:
@@ -196,17 +226,19 @@ def cmd_reject(args) -> int:
             "reason": args.reason,
             "first_seen": today,
             "last_checked": today,
+            "venue_fingerprint": fingerprint,
         })
         action = "appended"
 
-    write_rows(SEEN, SEEN_COLS, rows)
+    write_rows(seen_path, SEEN_COLS, rows)
     print(json.dumps({"status": action, "total": len(rows)}, ensure_ascii=False))
     return 0
 
 
 def cmd_stats(args) -> int:
-    pushed = read_rows(PUSHED)
-    seen = read_rows(SEEN)
+    pushed_path, seen_path = ledger_paths()
+    pushed = read_rows(pushed_path)
+    seen = read_rows(seen_path)
 
     by_reason: dict[str, int] = {}
     for r in seen:
@@ -237,7 +269,7 @@ def main() -> int:
     p2 = sub.add_parser("push", help="记为已推送")
     common(p2)
     p2.add_argument("--venue", default="preprint")
-    p2.add_argument("--year", default="")
+    p2.add_argument("--year", "--venue-year", dest="year", default="")
     p2.add_argument("--score", default="")
     p2.set_defaults(func=cmd_push)
 
@@ -251,7 +283,11 @@ def main() -> int:
     p4.set_defaults(func=cmd_stats)
 
     args = ap.parse_args()
-    return args.func(args)
+    try:
+        return args.func(args)
+    except ConfigError as exc:
+        print(f"配置错误：{exc}", file=sys.stderr)
+        return 2
 
 
 if __name__ == "__main__":

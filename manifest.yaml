@@ -1,4 +1,4 @@
-name: literature-pipeline
+name: CS-literature-pipeline
 version: 1.0.0
 description: >
   Declarative manifest for the literature search pipeline. SKILL.md keeps the
@@ -21,7 +21,7 @@ references:
       path: references/opensource-gate.md
     - condition: 构造 arXiv 检索式、处理限速/406/429、降级到 websearch
       path: references/arxiv-channel.md
-    - condition: arXiv 交付不足、需要从放行会议名单补足论文
+    - condition: arXiv 交付不足、需要按用户指定的会议或期刊顺序补足论文
       path: references/conference-channel.md
     - condition: 渲染交付给用户的日报卡片
       path: references/digest-format.md

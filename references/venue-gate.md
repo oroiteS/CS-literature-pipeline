@@ -1,6 +1,7 @@
-# Venue Gate — 综述/benchmark 门 + 会议门
+# Venue Gate — 综述/benchmark 门 + 发表场所门
 
-两件事都在本文件：**先杀综述/benchmark**，**再核录用会议**。顺序不可颠倒（综述判定只看标题摘要，成本最低）。
+两件事都在本文件：**先杀综述/benchmark**，**再核会议或期刊**。顺序不可颠倒（综述判定只看标题摘要，成本最低）。
+会议和期刊使用同一用户名单，不按类型区别打分。期刊兜底必须核验正式发表或官方在线发表，不能把仅投稿、未核验的接收声明当成已发表。纯 preprint 保持原有放行规则。
 
 ---
 
@@ -25,27 +26,22 @@
 
 按成本从低到高：
 
-1. arXiv abs 页的 **Comments 字段**（最常见，如 `Accepted to CIKM 2026`）
-2. abs 缺失时，抓 HTML / PDF 前几页 grep：
-   `Accepted to|Accepted at|to appear in|Published in|Proceedings of|© \d{4} (IEEE|ACM)`
+1. 同时检查 arXiv 的 **Comments、Journal Reference 和 DOI**；Comments 非空并不意味着没有期刊发表记录。
+2. 对存在 DOI 或 journal reference 的论文核对官方论文页或可信元数据，确认发表场所及状态；来源不一致或无法核验时明确标记，不得直接当作纯 preprint。
+3. 有需要时抓 HTML / PDF 前几页检查 `Accepted to|Accepted at|to appear in|Published in|Proceedings of` 等声明。
 
 ### 2.2 判定
 
 | 情形 | 处理 |
 |---|---|
-| 有声明，命中 `venues.yaml` 的 name/aliases | **放行**，`venue_score` = 该会分数 |
-| 有声明，未命中 | **淘汰**（不在放行名单的会议一律不放行） |
-| 有声明，但会议无法核验 | 按未命中处理，报告注明「venue 无法核验」 |
+| 有声明，命中 `venues.yaml` 的 name/aliases | **放行**，`venue_score` = 该场所分数 |
+| 有声明，未命中 | **淘汰**（不在放行名单的会议或期刊一律不放行） |
+| 有声明，但 venue 无法核验 | 按未命中处理，报告注明「venue 无法核验」 |
 | **无任何录用声明（纯 preprint）** | **放行**，`venue_score = preprint_score`（默认 0.5） |
 
 ### 2.3 别名匹配
 
-大小写不敏感、去标点后做包含匹配。
-
-```
-normalize(s) = NFKC → lower → 去非字母数字 → 压空格
-命中条件：normalize(声明文本) 包含 normalize(name) 或任一 normalize(alias)
-```
+大小写不敏感，NFKC 归一化并将标点转换为空格，再匹配完整词组；缩写的前后须为非字母数字或文本边界，不能裸做子串匹配。别名须由用户在名单中提供，不能凭空推断。
 
 必须能处理：
 - 简称 ↔ 全称：`NIPS` ↔ `NeurIPS` ↔ `Neural Information Processing Systems`
@@ -61,7 +57,7 @@ normalize(s) = NFKC → lower → 去非字母数字 → 压空格
 无录用声明        → venue_score = preprint_score（默认 0.5）
 ```
 
-preprint 折半的理由：未过评审，可信度低于已录用论文；但仍放行，否则 arXiv 渠道几乎每天 0 篇。
+`venue_score` 仅在相关度相同时作次排序键，不再与相关度相乘；preprint 仍放行。
 
 ---
 

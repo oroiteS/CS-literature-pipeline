@@ -1,6 +1,6 @@
 # arXiv Channel — 主渠道
 
-arXiv 永远是第一渠道。只有它交付不足 `max_papers` 时，才启用会议渠道。
+arXiv 永远是第一渠道。只有它交付不足 `max_papers` 时，才按用户配置顺序启用 venue 兜底（会议或期刊）。
 
 ---
 
@@ -38,7 +38,7 @@ curl -sS --noproxy '*' --max-time 30 \
 或直接用脚本（推荐，内含解析与去重）：
 
 ```bash
-python3 scripts/arxiv_search.py --days 7 --max 30 --out /tmp/candidates.json
+python3 scripts/arxiv_search.py --days 7 --max 90 --out /tmp/candidates.json
 ```
 
 ---
@@ -67,7 +67,8 @@ curl -sS --noproxy '*' --max-time 60 \
 
 - **单批 `max_results ≤ 30`**。
 - **绝不用 80**。历史实测：`max_results=80` 配合按日期排序会**退化成返回旧结果**，看起来正常但全是陈年论文。
-- 需要更多候选 → 拆成多组查询，每组 ≤30，分别按日期排序后合并。
+- `--max` 为总抓取预算，默认 90；每页最多 30，按 `start` 分页并限速。达到预算但不能证明完整时标记可能截断；页失败标记失败，不能当作完整。
+- 时间窗之前的结果可用于停止分页；网页搜索降级结果须明确标明其完整性未知。
 
 ---
 
@@ -97,6 +98,8 @@ curl -sS --noproxy '*' --max-time 60 \
   "updated": "2026-10-25T03:32:01Z",
   "categories": ["cs.CL"],
   "comments": "Accepted to XXX 2026. Code: https://...",
+  "doi": "10.example/identifier",
+  "journal_ref": "官方发表信息（如有）",
   "abs_url": "https://arxiv.org/abs/2610.12345",
   "pdf_url": "https://arxiv.org/pdf/2610.12345"
 }

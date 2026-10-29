@@ -1,6 +1,6 @@
 # State Files — 台账 schema
 
-两份 CSV，都在 `data/` 下。用 `scripts/dedup.py` 读写，不要手写。
+两份 CSV 默认在 `data/` 下；若 profile 的 `data_dir` 指定其他目录，检索、体检和台账脚本统一使用该目录。用 `scripts/dedup.py` 读写，不要手写。
 
 ---
 
@@ -29,8 +29,8 @@ arxiv_id,doi,title_norm,title,venue,venue_year,pushed_at,score
 ## §2 `data/seen.csv` — 已评估但被拒（30 天滚动）
 
 ```csv
-arxiv_id,doi,title_norm,title,reason,first_seen,last_checked
-2610.22222,,some paper title,Some Paper Title,no_code,2026-10-01,2026-10-27
+arxiv_id,doi,title_norm,title,reason,first_seen,last_checked,venue_fingerprint
+2610.22222,,some paper title,Some Paper Title,no_code,2026-10-01,2026-10-27,
 ```
 
 | 列 | 说明 |
@@ -38,6 +38,9 @@ arxiv_id,doi,title_norm,title,reason,first_seen,last_checked
 | `reason` | `survey_benchmark` / `no_code` / `venue_not_allowed` / `low_relevance` |
 | `first_seen` | 首次评估日期 |
 | `last_checked` | 最近一次评估日期 |
+| `venue_fingerprint` | `venue_not_allowed` 判定时的名单内容指纹；旧行缺失时保守重评 |
+
+仅 `venue_not_allowed` 在名单指纹变化时立即重评；其他原因保持原有 30 天规则。旧 CSV 无该列仍可读取，后续写入时补列。
 
 ### 30 天滚动复核逻辑
 
