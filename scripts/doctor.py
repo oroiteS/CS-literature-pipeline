@@ -5,6 +5,7 @@ from __future__ import annotations
 import argparse
 import csv
 import json
+import math
 import sys
 import urllib.error
 import urllib.request
@@ -66,6 +67,36 @@ def main(argv: list[str] | None = None) -> int:
             entry['ok'] = True
         except (OSError, UnicodeError, ValueError, csv.Error) as e:
             result['errors'].append(f'台账错误：{path}: {e}')
+
+    queue_path = data / 'queue.json'
+    warn_threshold = profile.get('queue_warn_threshold', 30)
+    queue_entry = {'path': str(queue_path), 'ok': False, 'exists': queue_path.exists()}
+    result['ledger']['queue.json'] = queue_entry
+    if not queue_path.exists():
+        queue_entry.update(ok=True, count=0, warn_threshold=warn_threshold, warn_exceeded=False)
+    else:
+        try:
+            obj = json.loads(queue_path.read_text(encoding='utf-8'))
+            if not isinstance(obj, dict) or obj.get('schema_version') != 1 or not isinstance(obj.get('items'), list):
+                raise ValueError('需要 schema_version=1 与 items 列表')
+            for idx, item in enumerate(obj['items']):
+                if not isinstance(item, dict) or not isinstance(item.get('title'), str) or not item['title'].strip():
+                    raise ValueError(f'第 {idx} 项缺少有效 title')
+                for field, low, high in (('relevance', 0, 10), ('venue_score', 0, None)):
+                    val = item.get(field)
+                    if isinstance(val, bool) or not isinstance(val, (int, float)) or not math.isfinite(val):
+                        raise ValueError(f'第 {idx} 项 {field} 必须是有限数字')
+                    if val < low or (high is not None and val > high):
+                        raise ValueError(f'第 {idx} 项 {field} 超出范围')
+            count = len(obj['items'])
+            queue_entry.update(
+                ok=True,
+                count=count,
+                warn_threshold=warn_threshold,
+                warn_exceeded=count > warn_threshold,
+            )
+        except (OSError, UnicodeError, ValueError, json.JSONDecodeError) as e:
+            result['errors'].append(f'队列错误：{queue_path}: {e}')
     if args.online:
         try:
             opener = urllib.request.build_opener(urllib.request.ProxyHandler({}))

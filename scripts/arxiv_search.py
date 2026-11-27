@@ -46,7 +46,8 @@ VENUES = SKILL_ROOT / "references" / "venues.yaml"
 DATA = SKILL_ROOT / "data"
 PUSHED = DATA / "pushed.csv"
 SEEN = DATA / "seen.csv"
-_DEFAULT_PUSHED, _DEFAULT_SEEN = PUSHED, SEEN
+QUEUE = DATA / "queue.json"
+_DEFAULT_PUSHED, _DEFAULT_SEEN, _DEFAULT_QUEUE = PUSHED, SEEN, QUEUE
 
 API = "https://export.arxiv.org/api/query"
 ATOM = "{http://www.w3.org/2005/Atom}"
@@ -93,6 +94,30 @@ def load_ledger(path: Path) -> dict[str, dict]:
     return idx
 
 
+def load_queue_ledger(path: Path) -> dict[str, dict]:
+    """读 queue.json 待推队列，返回 {key: item}，覆盖 arxiv_id / doi / title_norm。"""
+    idx: dict[str, dict] = {}
+    if not path.exists():
+        return idx
+    try:
+        obj = json.loads(path.read_text(encoding="utf-8"))
+    except (OSError, UnicodeError, json.JSONDecodeError) as exc:
+        raise ValueError(f"queue.json 读取失败：{exc}") from exc
+    if not isinstance(obj, dict) or obj.get("schema_version") != 1 or not isinstance(obj.get("items"), list):
+        raise ValueError("queue.json 格式无效：需要 schema_version=1 与 items 列表")
+    for item in obj["items"]:
+        if not isinstance(item, dict):
+            raise ValueError("queue.json 含非对象条目")
+        for field in ("arxiv_id", "doi", "title_norm"):
+            val = str(item.get(field) or "").strip()
+            if val:
+                idx[val.lower()] = item
+        nt = norm_title(str(item.get("title") or ""))
+        if nt:
+            idx[nt] = item
+    return idx
+
+
 def in_pushed(paper: dict, idx: dict[str, dict]) -> bool:
     for key in (
         (paper.get("arxiv_id") or "").lower(),
@@ -102,6 +127,10 @@ def in_pushed(paper: dict, idx: dict[str, dict]) -> bool:
         if key and key in idx:
             return True
     return False
+
+
+def in_queue(paper: dict, idx: dict[str, dict]) -> bool:
+    return in_pushed(paper, idx)
 
 
 def seen_recent(paper: dict, idx: dict[str, dict], days: int = 30,
@@ -377,12 +406,20 @@ def main() -> int:
 
     if not args.no_dedup:
         pushed = load_ledger(PUSHED if PUSHED != _DEFAULT_PUSHED else data / 'pushed.csv')
+        try:
+            queued = load_queue_ledger(QUEUE if QUEUE != _DEFAULT_QUEUE else data / 'queue.json')
+        except ValueError as exc:
+            print(f"队列台账错误：{exc}", file=sys.stderr)
+            return 2
         seen = load_ledger(SEEN if SEEN != _DEFAULT_SEEN else data / 'seen.csv')
         fingerprint = venue_fingerprint(VENUES)
-        kept, skipped = [], {"pushed": 0, "seen": 0}
+        kept, skipped = [], {"pushed": 0, "queued": 0, "seen": 0}
         for p in papers:
             if in_pushed(p, pushed):
                 skipped["pushed"] += 1
+                continue
+            if in_queue(p, queued):
+                skipped["queued"] += 1
                 continue
             if seen_recent(p, seen, fingerprint=fingerprint) is not None:
                 skipped["seen"] += 1
@@ -390,7 +427,7 @@ def main() -> int:
             kept.append(p)
         papers = kept
         print(
-            f"去重：跳过已推送 {skipped['pushed']} 篇、30 天内已评估 {skipped['seen']} 篇",
+            f"去重：跳过已推送 {skipped['pushed']} 篇、待推队列 {skipped['queued']} 篇、30 天内已评估 {skipped['seen']} 篇",
             file=sys.stderr,
         )
 

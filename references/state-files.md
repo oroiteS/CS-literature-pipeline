@@ -1,6 +1,6 @@
-# State Files — 台账 schema
+# State Files — 台账与待推队列 schema
 
-两份 CSV 默认在 `data/` 下；若 profile 的 `data_dir` 指定其他目录，检索、体检和台账脚本统一使用该目录。用 `scripts/dedup.py` 读写，不要手写。
+三份状态文件默认在 `data/` 下；若 profile 的 `data_dir` 指定其他目录，检索、体检和台账脚本统一使用该目录。用 `scripts/dedup.py` 读写，不要手写。
 
 ---
 
@@ -26,6 +26,55 @@ arxiv_id,doi,title_norm,title,venue,venue_year,pushed_at,score
 
 ---
 
+## §1.5 `data/queue.json` — 待推优先级队列（无硬上限）
+
+所有通过三道门槛且 `relevance >= min_relevance` 的合格论文先写入此队列，保存完整卡片字段；每次运行按优先级最多弹出当日剩余配额（默认每日 5 篇）推送给用户，未推完的留在队列中次日续推，避免重复抓取与重复消耗 token。
+
+```json
+{
+  "schema_version": 1,
+  "items": [
+    {
+      "arxiv_id": "2610.11111",
+      "doi": "",
+      "title_norm": "learning user preference shifts via temporal memory retrieval",
+      "title": "Learning User Preference Shifts via Temporal Memory Retrieval",
+      "venue": "NeurIPS",
+      "venue_year": "2026",
+      "relevance": 9.0,
+      "venue_score": 1.0,
+      "published": "2026-10-25T03:32:01Z",
+      "pub_status": "已录用",
+      "summary": "一句话总结",
+      "code_url": "https://github.com/example/temporal-mem",
+      "paper_url": "https://arxiv.org/abs/2610.11111",
+      "direction_tag": "Personalized LLM",
+      "source": "arxiv",
+      "queued_at": "2026-10-27"
+    }
+  ]
+}
+```
+
+### 队列规则
+
+- **容量**：不设硬上限。
+- **积压汇报**：当交付后队列剩余篇数 `> queue_warn_threshold`（默认 `30`）时，`queue-status` / `pop` 返回 `warn_exceeded: true` 及分数段分布（`high_9_10` / `mid_7_8` / `edge_5_6` / `other`）和 `oldest_queued_at` / `oldest_days`，直接向用户汇报，由用户自行决定后续安排。
+- **优先级排序**：`relevance` 降序 → `venue_score` 降序 → 发表时间（`published` 或 `venue_year`）由新到旧 → `queued_at` 先入先出。
+- **出队原子顺序**：`dedup.py pop` 先追加写入 `pushed.csv`，再原子更新 `queue.json` 移除已弹出项；即使中途崩溃也不会重发。
+- **去重优先级**：`pushed.csv`（跳过）→ `queue.json`（已在队，跳过不重评）→ `seen.csv`（30 天内跳过）。合格论文入队若曾出现在 `seen.csv`（如 30 天复核或名单变动后通过），自动从 `seen.csv` 移除。
+
+### 常用命令
+
+```bash
+python3 scripts/dedup.py queue-status                 # 查今日剩余配额、队列水位与告警状态
+python3 scripts/dedup.py enqueue --json-in /tmp/q.json # 批量（或单篇参数）写入合格论文
+python3 scripts/dedup.py pop [--dry-run]              # 按优先级弹出今日配额并记入 pushed.csv
+python3 scripts/dedup.py queue-list                   # 按优先级查看当前队列全部论文
+```
+
+---
+
 ## §2 `data/seen.csv` — 已评估但被拒（30 天滚动）
 
 ```csv
@@ -47,12 +96,13 @@ arxiv_id,doi,title_norm,title,reason,first_seen,last_checked,venue_fingerprint
 ```
 今天遇到论文 P：
   P 在 pushed.csv  → 跳过（永久）
+  P 在 queue.json  → 跳过（已在待推队列，不重评）
   P 在 seen.csv：
       today - last_checked < 30 天  → 跳过（不重评，省 token）
       today - last_checked >= 30 天 → 重新评估
                                         仍拒 → 覆盖该行（更新 reason / last_checked）
-                                        通过 → 从 seen.csv 删除，正常交付
-  P 都不在 → 正常评估，被拒则追加
+                                        通过 → 从 seen.csv 删除，入队 queue.json
+  P 都不在 → 正常评估，通过则入队 queue.json，被拒则追加 seen.csv
 ```
 
 **为什么滚动**：论文可能在 30 天内开源了、中了会了，永久拉黑会漏掉。30 天是复核周期，不是惩罚期。

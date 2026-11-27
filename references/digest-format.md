@@ -8,7 +8,9 @@
 
 ```markdown
 📅 {YYYY-MM-DD} 文献检索 | {direction.name}
-arXiv 命中 {A} → venue 兜底补 {B} → 交付 {N}/{max}（窗口 {window_days} 天）
+arXiv 命中 {A}（新入队 {Q_arxiv}）· venue 兜底入队 {Q_venue} | 队列：原有 {Q0} + 新入队 {Q_in} → 交付 {N}/{max}，剩余 {Q_left} 篇（窗口 {window_days} 天）
+（仅当 Q_left > queue_warn_threshold 时显示下一行）
+⚠️ 待推队列积压汇报：当前剩余 {Q_left} 篇（超过阈值 {threshold} 篇；9–10 分 {h} / 7–8 分 {m} / 5–6 分 {e}；最老入队 {oldest_days} 天）
 
 ━━━━━━━━━━━━━━━━━━━━
 
@@ -41,11 +43,17 @@ arXiv 命中 {A} → venue 兜底补 {B} → 交付 {N}/{max}（窗口 {window_d
 ## 头部统计（必含）
 
 ```
-arXiv 命中 {A} → venue 兜底补 {B} → 交付 {N}/{max}（窗口 {window_days} 天）
+arXiv 命中 {A}（新入队 {Q_arxiv}）· venue 兜底入队 {Q_venue} | 队列：原有 {Q0} + 新入队 {Q_in} → 交付 {N}/{max}，剩余 {Q_left} 篇（窗口 {window_days} 天）
 淘汰：综述/benchmark {x} · 无开源 {y} · venue 不在名单 {z} · 相关度不足 {w}
 ```
 
 被「venue 不在名单」淘汰的，**列出场所名称**，方便用户决定要不要加进 `venues.yaml`。
+
+当交付后剩余队列 `Q_left > queue_warn_threshold`（默认 30）时，必含一行积压汇报：
+
+```
+⚠️ 待推队列积压汇报：当前剩余 {Q_left} 篇（超过阈值 {threshold} 篇；9–10 分 {h} / 7–8 分 {m} / 5–6 分 {e}；最老入队 {oldest_days} 天）
+```
 
 ---
 
@@ -86,8 +94,8 @@ venue 渠道：已扫 {m}/{total}，未补足；列出未扫、部分与失败�
 
 ```markdown
 📅 2026-10-27 文献检索 | 个性化大模型
-arXiv 命中 34 → venue 兜底补 2 → 交付 3/5（窗口 7 天）
-淘汰：综述/benchmark 3 · 无开源 11 · venue 不在名单 4 · 相关度不足 9
+arXiv 命中 34（新入队 6）· venue 兜底入队 0 | 队列：原有 2 + 新入队 6 → 交付 5/5，剩余 3 篇（窗口 7 天）
+淘汰：综述/benchmark 3 · 无开源 11 · venue 不在名单 4 · 相关度不足 10
 
 ━━━━━━━━━━━━━━━━━━━━
 

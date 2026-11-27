@@ -216,7 +216,7 @@ def validate_config(profile: dict, venues: dict) -> list[str]:
     for label, years in (('conference_years', profile.get('conference_years', [])), ('venues.years', venues.get('years', []))):
         if not isinstance(years, list) or any(type(y) is not int or y < 1900 or y > 9999 for y in years):
             errors.append(f'{label} 必须是年份整数列表')
-    for key in ('window_days', 'max_papers'):
+    for key in ('window_days', 'max_papers', 'queue_warn_threshold'):
         if key in profile and (type(profile[key]) is not int or profile[key] <= 0):
             errors.append(f'{key} 必须是正整数')
     def number(value, label, low, high=None):

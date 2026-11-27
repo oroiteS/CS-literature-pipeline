@@ -34,30 +34,34 @@ metadata:
 ## 1. 主流程
 
 ```
-① arXiv 主渠道（永远先跑）
-   scripts/arxiv_search.py → 近 N 天候选 → 三层去重（arXiv ID / DOI / 归一化标题）
+① 查配额与队列水位
+   scripts/dedup.py queue-status → 读取今日剩余配额（max_papers - 今日已推，默认每日 5 篇）与当前队列数
 
-② 门槛（gate-first：先杀后评，省 token）
+② arXiv 主渠道（永远先跑）
+   scripts/arxiv_search.py → 近 N 天候选 → 三层去重（跳过 pushed.csv / queue.json / 30 天内 seen.csv）
+
+③ 门槛（gate-first：先杀后评，省 token）
    综述·benchmark 门 → 开源门 → 会议门
    任一不过 → 淘汰，写入 seen.csv
 
-③ 排序
-   按 relevance 降序、venue_score 降序、发表时间由新到旧排序。
-   venue_score 只在相关度相同时作为次排序键；会议和期刊不按类型区别对待。
+④ 打分与入队
+   过门论文打 relevance（0–10）；< min_relevance 记 low_relevance 入 seen.csv；
+   >= min_relevance 的合格论文全部写入 data/queue.json（存完整卡片元数据，队列无硬上限）
 
-④ 截断交付
-   按上述顺序取前 max_papers（默认 5）篇；relevance < min_relevance 的一律不交付
+⑤ 兜底：仅当「队列现有总数 < 今日剩余配额」时，按 venues.yaml 顺序逐个扫描 venue（会议或期刊）
+   官方 proceedings / 期刊目录等 → 关键词预筛 → 核验论文与发表状态
+   → 同一套门槛与打分 → 合格者入队，补到队列足够今日交付或已验证完整的名单耗尽即停
+   记录断点、来源质量和不完整状态，禁止将部分名单或失败视为扫完。
 
-⑤ 交付
+⑥ 优先级出队与交付
+   scripts/dedup.py pop → 按 relevance 降序、venue_score 降序、发表时间由新到旧（同序先入先出）
+   从 queue.json 弹出最多今日剩余配额（默认每日 5）篇，先写 pushed.csv 再移出 queue.json；
+   未推完的合格论文留在 queue.json，次日继续按优先级推出。
    精简卡片 → 当前会话（格式见 references/digest-format.md）
 
-⑥ 归档
-   pushed.csv 追加（永久去重）· data/daily/YYYY-MM-DD.md 存当天日报
-
-⑦ 兜底：arXiv 交付不足 max_papers → 按 venues.yaml 顺序逐个扫描 venue（会议或期刊）
-   官方 proceedings / 期刊目录等 → 关键词预筛 → 核验论文与发表状态
-   → 同一套门槛 → 补到 max_papers 或已验证完整的名单耗尽
-   记录断点、来源质量和不完整状态，禁止将部分名单或失败视为扫完。
+⑦ 归档与积压汇报
+   data/daily/YYYY-MM-DD.md 存当天日报；
+   若交付后队列剩余篇数 > queue_warn_threshold（默认 30），在日报中直接向用户汇报队列总数与分数分布。
 ```
 
 ## 2. 三道门槛
@@ -108,30 +112,31 @@ metadata:
 | 3–4 | 仅关键词表面命中 |
 | 0–2 | 不相关 |
 
-`relevance < min_relevance`（默认 5）→ 不交付，记 `low_relevance` 入 seen.csv。
+`relevance < min_relevance`（默认 5）→ 不入队、不交付，记 `low_relevance` 入 seen.csv。
 
 ## 4. 交付
 
 精简卡片，推送到当前会话。模板与示例见 `references/digest-format.md`。
 
-日报头部必含：日期、方向名、`arXiv 命中 X → venue 兜底补 Y → 交付 N/max`。
+日报头部必含：日期、方向名、arXiv/venue 命中与入队情况、队列水位（`原有 / 新入队 / 交付 N/max / 剩余`）。
 
-篇数 **1–5**。若窗口内确实 0 篇合格：**如实报告 0 篇并说明卡在哪道门**，不凑数、不放水。0 篇是正常结果，不是故障。
+每日最多交付 `max_papers`（默认 **5**）篇，未推完的合格论文保留在 `data/queue.json` 供次日继续按优先级推出。若队列与当日检索合计确实 0 篇合格：**如实报告 0 篇并说明卡在哪道门**，不凑数、不放水。0 篇是正常结果，不是故障。
+
+**队列积压汇报**：队列无硬上限；当交付后 `queue.json` 剩余篇数 **超过 `queue_warn_threshold`（默认 30）** 时，在日报中直接向用户汇报剩余篇数、分数段分布和最老入队天数，由用户自行决定后续安排。
 
 ## 5. 台账
 
-两份 CSV，schema 见 `references/state-files.md`。
+三份状态文件，schema 见 `references/state-files.md`。
 
 | 文件 | 语义 |
 |---|---|
 | `data/pushed.csv` | 已发送。**永久**，命中即不再发送 |
+| `data/queue.json` | 已过门合格、待推送的**无上限优先级队列**（存完整卡片元数据，命中即跳过不重评，每日最多弹出 `max_papers` 篇） |
 | `data/seen.csv` | 已评估但被拒。**30 天滚动复核**：<30 天直接跳过；≥30 天重新评估并覆盖该行；`venue_not_allowed` 的名单指纹变化时立即重评 |
 
 三层去重键：arXiv ID / DOI / 归一化标题（NFKC → 小写 → 去标点 → 压空格）。
 
-**同日重跑**：若本次全部命中 pushed.csv 导致 0 篇，明确提示「今日已推送过，N 篇已在台账中」，不要静默返回空。
-
-**台账纪律**：只追加或按规则覆盖，禁止凭记忆重写。重写前必须逐行对照 `data/daily/` 的历史日报核对。
+**台账纪律**：只通过 `scripts/dedup.py` 读写，禁止凭记忆重写。出队时先写 `pushed.csv` 再移出 `queue.json`，确保中断不重发。重写前必须逐行对照 `data/daily/` 的历史日报核对。
 
 ## 6. 抓取纪律
 
@@ -148,7 +153,8 @@ metadata:
 | 只看 A 会 + 额外放行的 B 会 | `references/venues.yaml` 唯一真源，会议门 2c |
 | 会议分数一致、允许修改 | `default_score` + 单会 `score` 覆盖 |
 | 存关注方向，按方向搜 | `references/profile.yaml`，启动检查 §0 |
-| arXiv 优先，没有则搜会议，≤5 篇 | 主流程 ①⑦ |
+| arXiv 优先，队列不足则扫 venue，每日 ≤5 篇 | 主流程 ①–⑥ |
+| 合格未推完论文入队次日续推，>30 篇汇报 | §4、§5 queue.json |
 | curl 优先，其次 websearch | §6 |
 | 录用会议不在名单的不放行 | 2c |
 | 无开源代码一律不放行 | 2b |
@@ -158,16 +164,16 @@ metadata:
 
 | 文件 | 用途 |
 |---|---|
-| `references/profile.yaml` | 研究画像：方向、关键词、类目、窗口、篇数 |
+| `references/profile.yaml` | 研究画像：方向、关键词、类目、窗口、每日篇数与队列汇报阈值 |
 | `references/venues.yaml` | 放行的会议和期刊名单与分数（唯一真源） |
 | `references/venue-gate.md` | 综述/benchmark 判据 + 会议别名匹配 + preprint 处理 |
 | `references/opensource-gate.md` | 开源门槛：查什么、算不算、怎么判空 |
 | `references/arxiv-channel.md` | arXiv 检索式构造、限速、降级、标题保真 |
 | `references/conference-channel.md` | 会议兜底：curl 试探 → websearch → 回查 arXiv |
-| `references/digest-format.md` | 精简卡片模板与示例 |
-| `references/state-files.md` | 两份 CSV 的 schema 与 30 天滚动逻辑 |
-| `scripts/arxiv_search.py` | 抓取 + Atom 解析 + 去重 |
-| `scripts/dedup.py` | 台账读写 |
+| `references/digest-format.md` | 精简卡片模板、队列水位与积压汇报示例 |
+| `references/state-files.md` | `pushed.csv` / `queue.json` / `seen.csv` 的 schema 与流转逻辑 |
+| `scripts/arxiv_search.py` | 抓取 + Atom 解析 + 三账去重 |
+| `scripts/dedup.py` | 台账与待推优先级队列读写 |
 | `scripts/doctor.py` | 离线体检及可选联网探针 |
 | `scripts/venue_state.py` | venue 扫描检查点（agent 显式调用） |
 | `scripts/acl_anthology.py` | ACL Anthology 卷和论文链接提取 |

@@ -21,9 +21,9 @@ references:
       path: references/opensource-gate.md
     - condition: 构造 arXiv 检索式、处理限速/406/429、降级到 websearch
       path: references/arxiv-channel.md
-    - condition: arXiv 交付不足、需要按用户指定的会议或期刊顺序补足论文
+    - condition: 待推队列与今日 arXiv 合计仍不足今日配额、需要按用户指定的会议或期刊顺序补足论文
       path: references/conference-channel.md
     - condition: 渲染交付给用户的日报卡片
       path: references/digest-format.md
-    - condition: 读写 pushed.csv / seen.csv、处理 30 天滚动复核
+    - condition: 读写 pushed.csv / queue.json / seen.csv、管理待推优先级队列与 30 天滚动复核
       path: references/state-files.md
