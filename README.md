@@ -4,7 +4,7 @@
 
 一个面向**计算机领域**的「论文追踪」agent skill：按你指定的研究方向检索论文，**arXiv 优先 → CCF 会议/期刊兜底**，硬门槛卡 **venue 白名单**和**开源代码**，带台账保证**同一篇论文绝不推送两次**。
 
-**适用范围**：主要针对计算机领域——arXiv 按 `cs.*` 等类目检索；venue 名单一般从 **CCF 推荐目录**（会议/期刊均可）挑选。CCF 名单不内置、不分 A/B/C 等级：只要在你给的名单里就一视同仁，放行范围完全由你决定。
+**适用范围**：主要针对计算机领域——arXiv 按 `cs.*` 等类目检索；内置 `references/ccf.md`（CCF-A / CCF-B 期刊与会议参考目录，含全称和 DBLP 链接）便于访谈选单和补别名，但**不预设默认放行名单、也不按 A/B/C 等级加权**：只要写入你确认的 `venues.yaml` 就一视同仁，放行范围完全由你决定。
 
 ## 它做什么
 
@@ -67,6 +67,7 @@ skill 里**没有预设的方向和 venue 名单**，需要你提供。首次调
 ├── references/
 │   ├── profile.yaml            # ★ 研究方向（访谈生成）
 │   ├── venues.yaml             # ★ venue 白名单（访谈生成，会议/期刊）
+│   ├── ccf.md                  # CCF-A / CCF-B 参考目录（按需查阅，含全称与 DBLP 入口）
 │   ├── venue-gate.md           # 综述/benchmark + venue 门
 │   ├── opensource-gate.md      # 开源门槛
 │   ├── arxiv-channel.md        # arXiv 检索与降级

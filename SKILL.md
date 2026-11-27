@@ -25,9 +25,9 @@ metadata:
 | 关注方向 | `direction.keywords` | 访谈补齐 |
 | arXiv 类目 | `arxiv_categories` | 按方向提议 → 用户确认 |
 | 会议年份窗 | `conference_years` | 扫描会议前访谈补齐；仅期刊场景可不填 |
-| 放行发表场所 | `venues` | 访谈补齐，会议与期刊均可 |
+| 放行发表场所 | `venues` | 访谈补齐，会议与期刊均可（可按需查 `references/ccf.md` 协助选单与补别名） |
 
-**铁律**：方向与名单只能由用户提供。**禁止**自行编造默认名单、默认方向、默认年份顶上跑一遍。缺项 → 说清缺什么、要什么格式，然后停。
+**铁律**：方向与名单只能由用户提供。**禁止**自行编造默认名单、默认方向、默认年份顶上跑一遍（`references/ccf.md` 仅为参考目录，未经用户确认不得直接当作放行名单）。缺项 → 说清缺什么、要什么格式，然后停。
 
 一次把缺的项问全，不要分多轮挤牙膏。访谈清单见 `references/profile.yaml` 头部注释。
 
@@ -166,6 +166,7 @@ metadata:
 |---|---|
 | `references/profile.yaml` | 研究画像：方向、关键词、类目、窗口、每日篇数与队列汇报阈值 |
 | `references/venues.yaml` | 放行的会议和期刊名单与分数（唯一真源） |
+| `references/ccf.md` | CCF-A / CCF-B 期刊与会议参考目录（按需查阅，供访谈选单、补别名与查 DBLP 入口） |
 | `references/venue-gate.md` | 综述/benchmark 判据 + 会议别名匹配 + preprint 处理 |
 | `references/opensource-gate.md` | 开源门槛：查什么、算不算、怎么判空 |
 | `references/arxiv-channel.md` | arXiv 检索式构造、限速、降级、标题保真 |

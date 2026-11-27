@@ -15,6 +15,8 @@ always_load:
 
 references:
   on_demand:
+    - condition: 首次配置访谈按 CCF 目录挑选放行名单，或核验 CCF 会议/期刊的全称、旧称别名与 DBLP 链接（仅作参考目录，不替代 venues.yaml）
+      path: references/ccf.md
     - condition: 判断综述/benchmark 是否淘汰、匹配会议别名、处理纯 preprint 分数
       path: references/venue-gate.md
     - condition: 核查论文是否开源、判断仓库是否为空壳
